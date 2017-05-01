@@ -2,16 +2,15 @@ from problem import Problem
 from individual import Member
 from fpconst import *
 from list_recipes import normList
-import math
-import copy
-import random
+import math, copy, random
+import pylab as plt
 
 class NSGAII:
     mutation_rate = 1.0
     crossover_rate = 0.0
     generations = 200
     
-    def __init__(self,problem,pop_size = 100):
+    def __init__(self,problem, pop_size = 100):
         self.problem = problem
         self.population = []
         self.pop_size = pop_size
@@ -20,15 +19,16 @@ class NSGAII:
         
     def initialise_population(self):
         for i in range(0,self.seeding_pop_size):
-            p = Member(self.problem)
+            p = Member(self.problem.num_objectives)
+            p.set_random_genotype(self.problem)
             self.population.append(p)
         self.evaluate_population()
         
-    def evaluate_population(self,population=[]):
+    def evaluate_population(self, population=[]):
         if population == []:
             population = self.population
         for member in population:
-            member.evaluate()
+            member.evaluate(self.problem)
 
     def fast_nondominated_sort(self, population=[]):
         # dictionary, S, containing the solutions that an individual dominates
@@ -38,9 +38,8 @@ class NSGAII:
         fronts_list = [[] for m in population]
         # init population
         for member in population:
-            # number of solutions member dominated by n_member
-            member.n = 0
-            S[hash(member)] = []
+            member.n = 0 # num solutions dominated by
+            S[hash(member)] = [] # individuals dominated
         # calculate #dominations
         for member in population:
             for other_member in population:
@@ -85,7 +84,7 @@ class NSGAII:
                 for member in front:
                     normalised_front.append(member.fitness[objective])
                 try:
-                    normalised_front = normList(normalised_front)
+                    normalised_front = norm_list(normalised_front)
                 except:
                     # stops ZeroDivision errors
                     for i in range(0,len(normalised_front)):
@@ -114,7 +113,7 @@ class NSGAII:
         else:
             return parent_b
 
-    def run(self):
+    def run(self, plot=False, plot_freq=50):
         # step 1: an initial population has been created already
         population = self.population
         # step 2: non dominated sort
@@ -127,8 +126,10 @@ class NSGAII:
         print('///#############initial population###########///')
         gen = 0
         while gen < self.generations:
-            print('gen:',str(gen))
-            self.print_fronts(fronts,True,gen)
+            print 'gen:', str(gen)
+            if plot:
+                if gen % plot_freq == 0:
+                    self.print_fronts(fronts,True,gen)
             # step 3: create child population
             child_population = []
             while len(child_population) < self.pop_size:
@@ -136,12 +137,12 @@ class NSGAII:
                 child = parent_a.copy()
                 if random.random() < self.crossover_rate:
                     parent_b = self.binary_tournament(population)
-                    children = child.crossover(parent_b)
+                    children = child.crossover(parent_b, self.problem)
                 else:
                     children = [child]
                 for child_to_mutate in children:    
                     if random.random() < self.mutation_rate:
-                        child_to_mutate.mutation()
+                        child_to_mutate.mutation(self.problem)
                 while len(child_population) < self.pop_size and len(children) > 0:
                     child_population.append(children.pop())
 
@@ -166,88 +167,38 @@ class NSGAII:
                     while len(new_population) < self.pop_size and len(f) > 0:
                         new_population.append(f.pop())
             fronts = self.fast_nondominated_sort(new_population)
-            for f in fronts:
-                self.crowding_distance_assignment(f) # note: fix
             population = new_population
             gen += 1
         print('#############final population###########')
         self.print_population(population)
-        self.print_fronts(fronts,True,gen)
+        if plot:
+            self.print_fronts(fronts, True, gen)
+            plt.close()
         
     def print_population(self,population=[]):
         if population == []:
             population = self.population
         print("-"*10)
-        population = sorted(population,key=lambda member: member.domination_index)
+        population = sorted(population, key=lambda member: member.domination_index)
         for i,p in enumerate(population):
-            print("["+str(i)+"] " + str(p) + "   di = " +str(p.domination_index) + "   cd = "+str(p.crowded_distance)+"   fitness = "+str(p.fitness))
+            print("["+str(i)+"] " + str(p) + "   di = " + str(p.domination_index) + "   cd = "+str(p.crowded_distance)+"   fitness = "+str(p.fitness))
             
     def print_fronts(self,fronts,print_to_file=False,gens=0):
-        string = ""
+        plt.ion()
         for i,f in enumerate(fronts):
             if len(f) > 0:
                 if i % 3 == 0:
-                    color = 'b'
+                    colour = 'b'
                 elif i % 3 == 1:
-                    color = 'r'
+                    colour = 'r'
                 else:
-                    color = 'g'
-                front_text_x = "front_x_"+str(i)+" = ["
-                x_var = "front_x_"+str(i)
-                y_var = "front_y_"+str(i)
-                front_text_y = "front_y_"+str(i)+" = ["
-                for m in f:
-                    front_text_x += (str(m.fitness[0]) + ",")
-                    front_text_y += (str(m.fitness[1]) + ",")
-                front_text_x += "];"
-                front_text_y += "];"
-                if print_to_file:
-                    string += (front_text_x)
-                    string += (front_text_y)
-                    string += ("plot("+x_var+","+y_var+",\'"+color+"x\');")
-                else:
-                    print(front_text_x)
-                    print(front_text_y)
-                    print("plot("+x_var+","+y_var+",\'"+color+"x\');")
-        if print_to_file:
-            file = open('results/all_fronts_'+str(gens)+'.dat','w')
-            file.write(string)
-            file.close()
-                
-    def depth_first_search(self):
-        open_list = []
-        parent = Member(self.problem)
-        open_list.append(parent)
-        path = []
-        while len(open_list) > 0:
-            parent = open_list.pop(0)
-            path.append(parent)
-            print(len(path))
-            successors = self.problem.get_successors(parent)
-            for successor in successors:
-                is_in_path = self.in_path(successor,path)
-                #is_in_path = False
-                is_in_open_list = self.in_open_list(successor,open_list)
-                if is_in_path == False and is_in_open_list == False:
-                    open_list.append(successor)
-        self.evaluate_population(path)
-        fronts = self.fast_nondominated_sort(path)
-        self.print_fronts(fronts,True)
-        print(len(path))
-        
-    def in_path(self,parent,path):
-        for p in path:
-            if str(parent.genotype) == str(p.genotype):
-                return True
-        return False
+                    colour = 'g'
+                front_x = [m.fitness[0] for m in f]
+                front_y = [m.fitness[1] for m in f]
+                plt.plot(front_x, front_y, colour+"x")
+        plt.pause(0.05)
 
-    def in_open_list(self,parent,open_list):
-        for p in open_list:
-            if str(parent.genotype) == str(p.genotype):
-                return True
-        return False
-
-if __name__ == "__main__":
-    p = Problem()
-    ns = NSGAII(p,100)
-    ns.run()
+def norm_list(L, normalizeTo=1):
+    '''normalize values of a list to make its max = normalizeTo'''
+    vMax = max(L)
+    return [x / (vMax * 1.0) * normalizeTo for x in L]
