@@ -1,7 +1,6 @@
 from problem import Problem
 from individual import Member
 from fpconst import *
-from list_recipes import normList
 import math, copy, random
 import pylab as plt
 
