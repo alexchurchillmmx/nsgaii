@@ -9,21 +9,21 @@ class NSGAII:
     mutation_rate = 1.0
     crossover_rate = 0.0
     generations = 200
-    
+
     def __init__(self,problem, pop_size = 100):
         self.problem = problem
         self.population = []
         self.pop_size = pop_size
-        self.seeding_pop_size = 100
+        self.seeding_pop_size = pop_size
         self.initialise_population()
-        
+
     def initialise_population(self):
         for i in range(0,self.seeding_pop_size):
             p = Member(self.problem.num_objectives)
             p.set_random_genotype(self.problem)
             self.population.append(p)
         self.evaluate_population()
-        
+
     def evaluate_population(self, population=[]):
         if population == []:
             population = self.population
@@ -31,10 +31,9 @@ class NSGAII:
             member.evaluate(self.problem)
 
     def fast_nondominated_sort(self, population=[]):
-        # dictionary, S, containing the solutions that an individual dominates
-        S = dict()
+        S = dict() # dictionary, S, containing the solutions that an individual dominates
         if population == []:
-            population = self.population # note: fix
+            population = self.population
         fronts_list = [[] for m in population]
         # init population
         for member in population:
@@ -56,7 +55,6 @@ class NSGAII:
                 # add to first front
                 fronts_list[0].append(member)
         i = 0
-        # note: fix
         while len(fronts_list[i]) != 0:
             front = []
             for member in fronts_list[i]:
@@ -98,11 +96,11 @@ class NSGAII:
                     front[i].crowded_distance += (front[i + 1].normalised_fitness[objective] -
                                                   front[i - 1].normalised_fitness[objective])
 
-    def binary_tournament(self,population):
-        parent_a = random.choice(population).copy() # note: fix
-        parent_b = random.choice(population).copy()
-        return self.crowded_comparison(parent_a,parent_b)
-        
+    def binary_tournament(self, population):
+        parent_a = random.choice(population)
+        parent_b = random.choice(population)
+        return self.crowded_comparison(parent_a, parent_b)
+
     def crowded_comparison(self,parent_a,parent_b):
         if parent_a.domination_index < parent_b.domination_index:
             return parent_a
@@ -118,45 +116,48 @@ class NSGAII:
         population = self.population
         # step 2: non dominated sort
         fronts = self.fast_nondominated_sort(population)
-        self.print_fronts(fronts)
+        if plot:
+            self.plot_fronts(fronts)
         for f in fronts:
             self.crowding_distance_assignment(f)
         print('#############initial population###########')
         self.print_population(population)
-        print('///#############initial population###########///')
+        # step 3: main loop
         gen = 0
         while gen < self.generations:
             print 'gen:', str(gen)
             if plot:
                 if gen % plot_freq == 0:
-                    self.print_fronts(fronts,True,gen)
-            # step 3: create child population
+                    self.plot_fronts(fronts, True, gen)
+            # step 4: create child population
             child_population = []
             while len(child_population) < self.pop_size:
                 parent_a = self.binary_tournament(population)
                 child = parent_a.copy()
                 if random.random() < self.crossover_rate:
                     parent_b = self.binary_tournament(population)
-                    children = child.crossover(parent_b, self.problem)
+                    children = child.crossover(parent_b, self.problem) # children will be copies
                 else:
                     children = [child]
-                for child_to_mutate in children:    
+                for child_to_mutate in children:
                     if random.random() < self.mutation_rate:
                         child_to_mutate.mutation(self.problem)
                 while len(child_population) < self.pop_size and len(children) > 0:
                     child_population.append(children.pop())
 
-            # evaluate child population
+            # step 5: evaluate child population
             self.evaluate_population(child_population)
-            # merge with original
+
+            # step 6: merge with original
             population_R = population + child_population
-            # determine fronts
+
+            # step 7: determine fronts and crowding distance
             fronts = self.fast_nondominated_sort(population_R)
-            # set crowding distance
             for f in fronts:
                 self.crowding_distance_assignment(f,to_print=False)
             new_population = []
 
+            # step 8: merge fronts into new population
             for f in fronts:
                 if (len(new_population) > self.pop_size):
                     break
@@ -169,21 +170,24 @@ class NSGAII:
             fronts = self.fast_nondominated_sort(new_population)
             population = new_population
             gen += 1
+
+        # present final population
         print('#############final population###########')
         self.print_population(population)
         if plot:
-            self.print_fronts(fronts, True, gen)
+            self.plot_fronts(fronts, True, gen)
             plt.close()
-        
+
     def print_population(self,population=[]):
         if population == []:
             population = self.population
         print("-"*10)
         population = sorted(population, key=lambda member: member.domination_index)
         for i,p in enumerate(population):
-            print("["+str(i)+"] " + str(p) + "   di = " + str(p.domination_index) + "   cd = "+str(p.crowded_distance)+"   fitness = "+str(p.fitness))
-            
-    def print_fronts(self,fronts,print_to_file=False,gens=0):
+            print("["+str(i)+"] " + str(p) + "   di = " + str(p.domination_index) + "   cd = "+str(p.crowded_distance) +
+                  "   fitness = " + str(p.fitness))
+
+    def plot_fronts(self, fronts, print_to_file=False, gens=0):
         plt.ion()
         for i,f in enumerate(fronts):
             if len(f) > 0:
